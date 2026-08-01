@@ -1,5 +1,7 @@
 # A tiny Bevy platformer
 
+[![CI](https://github.com/domenickp/test-game/actions/workflows/ci.yml/badge.svg)](https://github.com/domenickp/test-game/actions/workflows/ci.yml)
+
 A complete, small 2D platformer built on **[Bevy](https://bevy.org) 0.19**
 ([API docs](https://docs.rs/bevy/0.19.0/bevy/)), written to be read rather than shipped. No
 external crates, no art assets — every sprite is a colored rectangle and the level is a block
@@ -86,20 +88,26 @@ do.
 
 **Windows** — covered by the Visual Studio Build Tools from step 1. Nothing further.
 
-**Linux** — install the development headers for X11, ALSA, and udev. For the common distros:
+**Linux** — install the development headers for X11, Wayland, ALSA, and udev:
 
 ```bash
 # Debian / Ubuntu
-sudo apt-get install g++ pkg-config libx11-dev libasound2-dev libudev-dev libxkbcommon-x11-0
-sudo apt-get install libwayland-dev libxkbcommon-dev          # for Wayland sessions
+sudo apt-get install g++ pkg-config libx11-dev libasound2-dev libudev-dev \
+  libxkbcommon-x11-0 libwayland-dev libxkbcommon-dev
 
 # Fedora
-sudo dnf install gcc-c++ libX11-devel alsa-lib-devel systemd-devel
-sudo dnf install wayland-devel libxkbcommon-devel             # for Wayland sessions
+sudo dnf install gcc-c++ libX11-devel alsa-lib-devel systemd-devel \
+  wayland-devel libxkbcommon-devel
 
 # Arch / Manjaro
-sudo pacman -S libx11 pkgconf alsa-lib libxcursor libxrandr libxi
+sudo pacman -S libx11 pkgconf alsa-lib libxcursor libxrandr libxi wayland libxkbcommon
 ```
+
+You need the **Wayland** packages even if you only ever run X11. Bevy 0.19 enables its
+`wayland` feature by default, so the `wayland-sys` crate gets compiled either way, and its
+build script fails with `Package wayland-client was not found in the pkg-config search path`
+if the headers are missing. Bevy's upstream docs list these as optional, which is only true
+if you turn that feature off in `Cargo.toml`.
 
 You may also need Vulkan drivers for your GPU — `mesa-vulkan-drivers`, `vulkan-intel`, or
 `vulkan-radeon`. Bevy keeps a fuller per-distro list, including Void and NixOS, in
@@ -149,6 +157,46 @@ cargo test
 25 tests, no window, about 0.1 seconds. They exercise the real physics headlessly — a good
 way to confirm your setup works even on a machine with no display.
 
+### Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request and on
+pushes to `main`, in two jobs:
+
+| Check | What it runs |
+|---|---|
+| **rustfmt** | `cargo fmt --all --check` |
+| **clippy + tests** | `cargo clippy --all-targets -- -D warnings`, then `cargo test` |
+
+Formatting is split out because it needs no compilation, so a misformatted PR fails in
+seconds instead of after a multi-minute build. Clippy and the tests share one job so Bevy
+only compiles once.
+
+Two things make this cheap to run: [`Swatinem/rust-cache`](https://github.com/Swatinem/rust-cache)
+keeps the compiled dependencies between runs, and the tests are headless — `MinimalPlugins`
+means no window, no GPU, and no `xvfb` on the runner. The one non-obvious requirement is the
+`apt-get` step, which installs the same X11, Wayland, ALSA and udev packages as step 2 above;
+those are needed to compile a *test* binary too, and omitting them is the usual reason a Bevy
+project fails in CI while building fine locally. If you change one list, change the other.
+
+**Seeing results in the GitHub UI.** Once `ci.yml` is on the default branch, every PR grows
+a "Checks" section above the merge button, listing both jobs with pass/fail and a link to
+the full log. Nothing else to enable.
+
+**Making a red build block the merge.** That part is a repository setting, not a file:
+
+1. Push this workflow and let it run once — GitHub only offers checks it has actually seen.
+2. Go to **Settings → Rules → Rulesets → New branch ruleset** (or **Settings → Branches**
+   for the older protection UI), targeting `main`.
+3. Enable **Require status checks to pass**, then add `rustfmt` and `clippy + tests`.
+
+Those names come from the `name:` fields in the workflow, not the job ids (`format`, `test`)
+— an easy thing to trip over. Also worth ticking **Require branches to be up to date before
+merging**, which re-runs CI against the merged result rather than a stale branch.
+
+Actions minutes are free on public repositories. On a private one, note that a cold Bevy
+build burns through them faster than a typical Rust project — the cache does most of the
+work in keeping that down.
+
 ### If something goes wrong
 
 | Symptom | Cause and fix |
@@ -158,6 +206,7 @@ way to confirm your setup works even on a machine with no display.
 | `linker 'cc' not found` (macOS/Linux) | Missing C toolchain — step 2. |
 | `link.exe not found` (Windows) | Visual Studio Build Tools missing. Re-run `rustup-init.exe`, or install the "Desktop development with C++" workload. |
 | `Package alsa/libudev was not found` (Linux) | Missing dev headers — step 2. |
+| `Package 'wayland-client' ... not found` (Linux) | Missing `libwayland-dev` — step 2. Needed even on X11, because Bevy's `wayland` feature is on by default. |
 | Builds fine, then panics about a graphics adapter or surface | No usable GPU backend. On Linux install Vulkan drivers; in a VM or over plain SSH there may be no GPU at all. `cargo test` still works — it never opens a window. |
 
 ---
