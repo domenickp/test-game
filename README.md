@@ -88,20 +88,26 @@ do.
 
 **Windows** — covered by the Visual Studio Build Tools from step 1. Nothing further.
 
-**Linux** — install the development headers for X11, ALSA, and udev. For the common distros:
+**Linux** — install the development headers for X11, Wayland, ALSA, and udev:
 
 ```bash
 # Debian / Ubuntu
-sudo apt-get install g++ pkg-config libx11-dev libasound2-dev libudev-dev libxkbcommon-x11-0
-sudo apt-get install libwayland-dev libxkbcommon-dev          # for Wayland sessions
+sudo apt-get install g++ pkg-config libx11-dev libasound2-dev libudev-dev \
+  libxkbcommon-x11-0 libwayland-dev libxkbcommon-dev
 
 # Fedora
-sudo dnf install gcc-c++ libX11-devel alsa-lib-devel systemd-devel
-sudo dnf install wayland-devel libxkbcommon-devel             # for Wayland sessions
+sudo dnf install gcc-c++ libX11-devel alsa-lib-devel systemd-devel \
+  wayland-devel libxkbcommon-devel
 
 # Arch / Manjaro
-sudo pacman -S libx11 pkgconf alsa-lib libxcursor libxrandr libxi
+sudo pacman -S libx11 pkgconf alsa-lib libxcursor libxrandr libxi wayland libxkbcommon
 ```
+
+You need the **Wayland** packages even if you only ever run X11. Bevy 0.19 enables its
+`wayland` feature by default, so the `wayland-sys` crate gets compiled either way, and its
+build script fails with `Package wayland-client was not found in the pkg-config search path`
+if the headers are missing. Bevy's upstream docs list these as optional, which is only true
+if you turn that feature off in `Cargo.toml`.
 
 You may also need Vulkan drivers for your GPU — `mesa-vulkan-drivers`, `vulkan-intel`, or
 `vulkan-radeon`. Bevy keeps a fuller per-distro list, including Void and NixOS, in
@@ -168,9 +174,9 @@ only compiles once.
 Two things make this cheap to run: [`Swatinem/rust-cache`](https://github.com/Swatinem/rust-cache)
 keeps the compiled dependencies between runs, and the tests are headless — `MinimalPlugins`
 means no window, no GPU, and no `xvfb` on the runner. The one non-obvious requirement is the
-`apt-get` step installing X11, ALSA and udev headers; Bevy links against them even for a test
-binary, and leaving them out is the usual reason a Bevy project fails in CI but builds fine
-locally.
+`apt-get` step, which installs the same X11, Wayland, ALSA and udev packages as step 2 above;
+those are needed to compile a *test* binary too, and omitting them is the usual reason a Bevy
+project fails in CI while building fine locally. If you change one list, change the other.
 
 **Seeing results in the GitHub UI.** Once `ci.yml` is on the default branch, every PR grows
 a "Checks" section above the merge button, listing both jobs with pass/fail and a link to
@@ -200,6 +206,7 @@ work in keeping that down.
 | `linker 'cc' not found` (macOS/Linux) | Missing C toolchain — step 2. |
 | `link.exe not found` (Windows) | Visual Studio Build Tools missing. Re-run `rustup-init.exe`, or install the "Desktop development with C++" workload. |
 | `Package alsa/libudev was not found` (Linux) | Missing dev headers — step 2. |
+| `Package 'wayland-client' ... not found` (Linux) | Missing `libwayland-dev` — step 2. Needed even on X11, because Bevy's `wayland` feature is on by default. |
 | Builds fine, then panics about a graphics adapter or surface | No usable GPU backend. On Linux install Vulkan drivers; in a VM or over plain SSH there may be no GPU at all. `cargo test` still works — it never opens a window. |
 
 ---
