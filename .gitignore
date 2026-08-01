@@ -1,1 +1,104 @@
+# ---------------------------------------------------------------------------
+# Rust / Cargo
+# ---------------------------------------------------------------------------
+
+# Compiled output and the whole build cache. This is by far the biggest thing
+# here — a Bevy debug build lands around 6.5 GB, and ~7.5 GB once the tests and
+# linter have run. `cargo clean` reclaims it.
 target/
+
+# Where very old Cargo versions put builds. Anchored to the repo root so it
+# can't accidentally swallow a source directory that happens to be named
+# `debug/`.
+/debug/
+
+# Backups rustfmt writes when it can't format a file in place.
+**/*.rs.bk
+
+# Debug symbols emitted by MSVC toolchain builds on Windows.
+*.pdb
+
+# Coverage instrumentation output (cargo-llvm-cov, grcov, and friends).
+*.profraw
+*.profdata
+
+# Cargo.lock is deliberately NOT listed above, and is committed to this repo.
+#
+# GitHub's stock Rust .gitignore template ignores it, which is right for a
+# *library* but wrong for a binary like this one. Committing the lockfile is
+# what makes `cargo run` reproduce the exact dependency versions the README's
+# instructions were written and tested against, rather than whatever resolves
+# today. See:
+# https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html
+
+# ---------------------------------------------------------------------------
+# macOS
+# ---------------------------------------------------------------------------
+
+# Finder's per-directory metadata. Created just by opening a folder, which is
+# why it turns up in repos so often.
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Resource forks written onto non-Mac filesystems (USB sticks, network shares).
+._*
+
+# Volume metadata, mostly on removable and network drives.
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Left behind by AFP shares.
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# ---------------------------------------------------------------------------
+# Windows
+# ---------------------------------------------------------------------------
+
+# Explorer thumbnail and folder-settings caches.
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+[Dd]esktop.ini
+
+# Recycle Bin metadata, if a repo ever lives on a shared drive.
+$RECYCLE.BIN/
+
+# Crash dumps and shortcuts.
+*.stackdump
+*.lnk
+
+# ---------------------------------------------------------------------------
+# Linux
+# ---------------------------------------------------------------------------
+
+# Editor and temp-file leftovers.
+*~
+.fuse_hidden*
+
+# KDE per-directory settings.
+.directory
+
+# Trash folders on removable media.
+.Trash-*
+
+# NFS temp files, created when deleting a file that is still open.
+.nfs*
+
+# ---------------------------------------------------------------------------
+# Local tool state
+# ---------------------------------------------------------------------------
+
+# Per-developer Claude Code settings. Machine-specific, so it stays local.
+# A shared `.claude/settings.json`, if you ever add one, is still tracked.
+.claude/settings.local.json
