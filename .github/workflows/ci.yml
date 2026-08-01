@@ -1,0 +1,72 @@
+name: CI
+
+# Run on every pull request, and on pushes to main so the default branch always has a
+# known-good status to compare against.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+# If you push again while a run is still going, cancel the old one. Bevy builds are slow
+# enough that this saves real time on a branch you're iterating on.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Formatting needs no dependencies and no compilation, so it gets its own job and fails
+  # in seconds rather than waiting behind a multi-minute build.
+  format:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - run: cargo fmt --all --check
+
+  # Everything that needs a compile shares one job. Splitting clippy and test apart would
+  # look tidier in the UI but would compile Bevy twice for no benefit.
+  test:
+    name: clippy + tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # Bevy links against native X11, ALSA and udev libraries. Without these the build
+      # fails at the link step with errors like "cannot find -lasound" — this is the step
+      # people most often miss when putting a Bevy project into CI.
+      #
+      # Kept in sync with the Linux section of the README.
+      - name: Install Bevy's Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            g++ pkg-config libx11-dev libasound2-dev libudev-dev libxkbcommon-x11-0
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      # Caches ~/.cargo and the dependency half of target/. Without this every run
+      # recompiles all 530 crates; with it, an unchanged dependency tree restores in
+      # under a minute.
+      - uses: Swatinem/rust-cache@v2
+
+      # `-D warnings` turns clippy lints into build failures. The project is currently
+      # clean, and this is what keeps it that way.
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      # The 25 tests use `MinimalPlugins`, so they need no window, no GPU and no display
+      # server. That is why this works on a plain headless runner with no xvfb.
+      - name: Tests
+        run: cargo test

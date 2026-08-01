@@ -178,6 +178,21 @@ impl Harness {
     }
 }
 
+/// The world position of the first `character` in [`LEVEL`].
+///
+/// Tests that need to reach a particular feature look it up instead of hardcoding tile
+/// coordinates. The README invites you to redesign the level by editing the ASCII art, so a
+/// test that breaks when you move the goal two rows up is testing the wrong thing — it
+/// should still be checking "touching the flag wins", wherever the flag happens to be.
+fn find_tile(character: char) -> Vec2 {
+    for (row, line) in LEVEL.iter().enumerate() {
+        if let Some(column) = line.chars().position(|c| c == character) {
+            return tile_center(column as f32, row as f32);
+        }
+    }
+    panic!("LEVEL contains no {character:?}");
+}
+
 /// The ASCII art is load-bearing, so guard its invariants. These are the same asserts
 /// `spawn_level` makes, but as a test they name the rule instead of just enforcing it.
 #[test]
@@ -576,7 +591,7 @@ fn the_run_timer_freezes_on_the_win_screen() {
     harness.step(60);
     assert!(harness.progress().time > 0.5, "the clock should be running");
 
-    harness.place_player(tile_center(55.0, 4.0));
+    harness.place_player(find_tile('F'));
     harness.step(2);
     assert_eq!(harness.state(), GameState::Won);
 
@@ -667,7 +682,7 @@ fn touching_the_flag_wins() {
     let mut harness = Harness::new();
     assert_eq!(harness.state(), GameState::Playing);
 
-    harness.place_player(tile_center(55.0, 4.0));
+    harness.place_player(find_tile('F'));
     harness.step(2);
 
     assert_eq!(harness.state(), GameState::Won);
@@ -682,7 +697,7 @@ fn restarting_resets_progress_and_rebuilds_the_level() {
     harness.press(KeyCode::KeyD);
     harness.step(90);
     harness.release(KeyCode::KeyD);
-    harness.place_player(tile_center(55.0, 4.0));
+    harness.place_player(find_tile('F'));
     harness.step(2);
 
     let total_coins = harness.progress().total_coins;

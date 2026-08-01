@@ -1,5 +1,7 @@
 # A tiny Bevy platformer
 
+[![CI](https://github.com/domenickp/test-game/actions/workflows/ci.yml/badge.svg)](https://github.com/domenickp/test-game/actions/workflows/ci.yml)
+
 A complete, small 2D platformer built on **[Bevy](https://bevy.org) 0.19**
 ([API docs](https://docs.rs/bevy/0.19.0/bevy/)), written to be read rather than shipped. No
 external crates, no art assets — every sprite is a colored rectangle and the level is a block
@@ -148,6 +150,46 @@ cargo test
 
 25 tests, no window, about 0.1 seconds. They exercise the real physics headlessly — a good
 way to confirm your setup works even on a machine with no display.
+
+### Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request and on
+pushes to `main`, in two jobs:
+
+| Check | What it runs |
+|---|---|
+| **rustfmt** | `cargo fmt --all --check` |
+| **clippy + tests** | `cargo clippy --all-targets -- -D warnings`, then `cargo test` |
+
+Formatting is split out because it needs no compilation, so a misformatted PR fails in
+seconds instead of after a multi-minute build. Clippy and the tests share one job so Bevy
+only compiles once.
+
+Two things make this cheap to run: [`Swatinem/rust-cache`](https://github.com/Swatinem/rust-cache)
+keeps the compiled dependencies between runs, and the tests are headless — `MinimalPlugins`
+means no window, no GPU, and no `xvfb` on the runner. The one non-obvious requirement is the
+`apt-get` step installing X11, ALSA and udev headers; Bevy links against them even for a test
+binary, and leaving them out is the usual reason a Bevy project fails in CI but builds fine
+locally.
+
+**Seeing results in the GitHub UI.** Once `ci.yml` is on the default branch, every PR grows
+a "Checks" section above the merge button, listing both jobs with pass/fail and a link to
+the full log. Nothing else to enable.
+
+**Making a red build block the merge.** That part is a repository setting, not a file:
+
+1. Push this workflow and let it run once — GitHub only offers checks it has actually seen.
+2. Go to **Settings → Rules → Rulesets → New branch ruleset** (or **Settings → Branches**
+   for the older protection UI), targeting `main`.
+3. Enable **Require status checks to pass**, then add `rustfmt` and `clippy + tests`.
+
+Those names come from the `name:` fields in the workflow, not the job ids (`format`, `test`)
+— an easy thing to trip over. Also worth ticking **Require branches to be up to date before
+merging**, which re-runs CI against the merged result rather than a stale branch.
+
+Actions minutes are free on public repositories. On a private one, note that a cold Bevy
+build burns through them faster than a typical Rust project — the cache does most of the
+work in keeping that down.
 
 ### If something goes wrong
 
