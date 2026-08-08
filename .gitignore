@@ -12,6 +12,8 @@ target/
 # `debug/`.
 /debug/
 
+/ci_logs/
+
 # Backups rustfmt writes when it can't format a file in place.
 **/*.rs.bk
 

@@ -14,3 +14,17 @@ opt-level = 1
 [profile.dev.package."*"]
 opt-level = 3
 
+# CI builds nothing that has to run fast. The 25 tests finish in 0.17s, so the
+# `opt-level = 3` above buys nothing there and costs a lot: optimizing all ~340
+# dependency crates through LLVM is most of an 18-minute `cargo test` on a cold
+# runner, and it inflates the cached `target/` to 1.35 GB.
+#
+# Debuginfo goes too. It is dead weight for a pass/fail run and is a large share
+# of the artifact size the cache has to move.
+[profile.ci]
+inherits = "dev"
+debug = 0
+
+[profile.ci.package."*"]
+opt-level = 0
+

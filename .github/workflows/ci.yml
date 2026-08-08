@@ -68,14 +68,24 @@ jobs:
       # Caches ~/.cargo and the dependency half of target/. Without this every run
       # recompiles all 530 crates; with it, an unchanged dependency tree restores in
       # under a minute.
+      #
+      # Only main writes the cache. A cache saved on a PR branch is readable by that
+      # PR and nothing else, so letting every branch save just burns the repo's 10 GB
+      # cache budget and evicts the entry on main that new PRs actually restore from.
+      # PRs still read main's cache — that direction works across branches.
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # `-D warnings` turns clippy lints into build failures. The project is currently
       # clean, and this is what keeps it that way.
+      #
+      # Both cargo invocations must name the same profile. Different profiles mean
+      # separate target/ subdirectories and no shared artifacts between the steps.
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --profile ci --all-targets -- -D warnings
 
       # The 25 tests use `MinimalPlugins`, so they need no window, no GPU and no display
       # server. That is why this works on a plain headless runner with no xvfb.
       - name: Tests
-        run: cargo test
+        run: cargo test --profile ci
