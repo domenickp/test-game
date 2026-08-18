@@ -92,6 +92,14 @@ pub struct Player {
     pub coyote_timer: f32,
     /// Seconds a buffered jump press stays valid. Set to [`JUMP_BUFFER`] on press.
     pub jump_buffer: f32,
+    /// Which way the player last moved. `false` is right, which is also the direction
+    /// the level runs, so `Default` starts you facing the way you're going.
+    ///
+    /// Nothing draws this yet — a flat-colored box looks the same mirrored, which was
+    /// equally true of the `Sprite::flip_x` this replaced. It lives here anyway because
+    /// facing is *player state*, not a rendering detail, and it stops becoming
+    /// cosmetic the moment the camera swings around behind the player.
+    pub facing_left: bool,
 }
 
 /// Read the keyboard and write the player's velocity.
@@ -99,11 +107,16 @@ pub fn player_input(
     time: Res<Time>,
     // `ButtonInput<KeyCode>` is a resource Bevy refreshes each frame.
     keys: Res<ButtonInput<KeyCode>>,
-    mut players: Query<(&mut Velocity, &mut Player, &GroundState, &mut Sprite)>,
+    // Note there is nothing render-related in this query. That's deliberate: it used to
+    // ask for `&mut Sprite` in order to mirror the player, and a query for a component
+    // that no longer exists matches *nothing* — silently. The game still built, still
+    // ran, and simply ignored the keyboard. Keeping input free of rendering components
+    // means swapping the renderer can't quietly disconnect the controls again.
+    mut players: Query<(&mut Velocity, &mut Player, &GroundState)>,
 ) {
     let dt = step_seconds(&time);
 
-    for (mut velocity, mut player, ground, mut sprite) in &mut players {
+    for (mut velocity, mut player, ground) in &mut players {
         // ---- Horizontal ---------------------------------------------------------
 
         // Offer both arrows and WASD. `any_pressed` is true if *any* of them is down.
@@ -122,9 +135,8 @@ pub fn player_input(
 
         if direction != 0.0 {
             velocity.0.x = move_toward(velocity.0.x, direction * RUN_SPEED, acceleration * dt);
-            // Purely cosmetic: face the way we're moving. `flip_x` mirrors the sprite
-            // without touching the collider, which is exactly what we want.
-            sprite.flip_x = direction < 0.0;
+            // Remember which way we're going. Recorded, not drawn — see `facing_left`.
+            player.facing_left = direction < 0.0;
         } else {
             velocity.0.x = move_toward(velocity.0.x, 0.0, friction * dt);
         }
