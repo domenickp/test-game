@@ -4,6 +4,10 @@
 //! adding a new kind of tile means adding a character to the art and a `match` arm to
 //! [`spawn_level`]. Nothing else in the codebase needs to know about it.
 //!
+//! Note what this file *doesn't* do: it never mentions a color, a mesh, or the fact that
+//! the game renders in 3D. Each entity gets a [`Block`] — "a box this big, in this role"
+//! — and [`crate::render`] decides what that looks like.
+//!
 //! Storing a level as a string literal is not a toy technique — it's a genuinely good
 //! fit for a small grid-based game, because the source file is also the picture. When
 //! you outgrow it (irregular geometry, entity properties, more than one level) the next
@@ -23,6 +27,7 @@ use crate::{
     gameplay::{Coin, Goal, Hazard, Progress},
     physics::{Collider, Gravity, GroundState, MovingPlatform, OneWay, Solid, Velocity},
     player::Player,
+    render::{Block, BlockKind, LAYER_PLAYER, LAYER_PROP, LAYER_TERRAIN},
 };
 
 /// The level.
@@ -97,17 +102,6 @@ pub const MOVING_PLATFORMS: &[MovingPlatformSpec] = &[
         speed: 85.0,
     },
 ];
-
-// The palette. Flat colors, no textures — a rectangle in a readable color communicates
-// "this kills you" just fine, and skipping art assets keeps the project to one crate.
-const COLOR_SOLID: Color = Color::srgb(0.30, 0.36, 0.50);
-const COLOR_ONE_WAY: Color = Color::srgb(0.55, 0.44, 0.32);
-const COLOR_MOVING: Color = Color::srgb(0.85, 0.62, 0.28);
-const COLOR_COIN: Color = Color::srgb(1.00, 0.84, 0.28);
-const COLOR_HAZARD: Color = Color::srgb(0.88, 0.26, 0.36);
-const COLOR_PLAYER: Color = Color::srgb(0.36, 0.78, 0.96);
-const COLOR_GOAL_POLE: Color = Color::srgb(0.85, 0.87, 0.92);
-const COLOR_GOAL_FLAG: Color = Color::srgb(0.34, 0.90, 0.52);
 
 /// Marks everything that belongs to the current level attempt.
 ///
@@ -196,8 +190,8 @@ pub fn spawn_level(
                     // "block" type anywhere — a block is just this specific pile of
                     // components, assembled here.
                     commands.spawn((
-                        Sprite::from_color(COLOR_SOLID, Vec2::splat(TILE)),
-                        Transform::from_xyz(center.x, center.y, 0.0),
+                        Block::new(BlockKind::Solid, TILE, TILE),
+                        Transform::from_xyz(center.x, center.y, LAYER_TERRAIN),
                         Collider::new(TILE, TILE),
                         Solid,
                         LevelEntity,
@@ -209,11 +203,15 @@ pub fn spawn_level(
                     // as something you stand *on* rather than a block you go around.
                     let height = TILE * 0.35;
                     commands.spawn((
-                        Sprite::from_color(COLOR_ONE_WAY, Vec2::new(TILE, height)),
+                        Block::new(BlockKind::OneWay, TILE, height),
                         // Sit it at the top of its tile, so the surface you land on is
                         // where the grid line is. Off-by-a-few-pixels here is the kind
                         // of thing players feel without being able to name.
-                        Transform::from_xyz(center.x, center.y + (TILE - height) * 0.5, 0.0),
+                        Transform::from_xyz(
+                            center.x,
+                            center.y + (TILE - height) * 0.5,
+                            LAYER_TERRAIN,
+                        ),
                         Collider::new(TILE, height),
                         Solid,
                         OneWay,
@@ -224,8 +222,8 @@ pub fn spawn_level(
                 'o' => {
                     let size = TILE * 0.45;
                     commands.spawn((
-                        Sprite::from_color(COLOR_COIN, Vec2::splat(size)),
-                        Transform::from_xyz(center.x, center.y, 1.0),
+                        Block::new(BlockKind::Coin, size, size),
+                        Transform::from_xyz(center.x, center.y, LAYER_PROP),
                         // A slightly generous collider. Pickups should be easier to
                         // touch than they look; hazards (below) are the opposite.
                         Collider::new(size * 1.3, size * 1.3),
@@ -247,8 +245,8 @@ pub fn spawn_level(
                     // hitboxes on pickups — that asymmetry is deliberate everywhere.
                     let height = TILE * 0.4;
                     commands.spawn((
-                        Sprite::from_color(COLOR_HAZARD, Vec2::new(TILE * 0.9, height)),
-                        Transform::from_xyz(center.x, center.y - (TILE - height) * 0.5, 1.0),
+                        Block::new(BlockKind::Hazard, TILE * 0.9, height),
+                        Transform::from_xyz(center.x, center.y - (TILE - height) * 0.5, LAYER_PROP),
                         Collider::new(TILE * 0.8, height * 0.7),
                         Hazard,
                         LevelEntity,
@@ -262,10 +260,12 @@ pub fn spawn_level(
                     spawn_point.0 = center;
 
                     commands.spawn((
-                        Sprite::from_color(COLOR_PLAYER, Vec2::new(20.0, 28.0)),
-                        // z = 2 puts the player in front of coins (z = 1) and blocks
-                        // (z = 0). In 2D, z is purely draw order.
-                        Transform::from_xyz(center.x, center.y, 2.0),
+                        Block::new(BlockKind::Player, 20.0, 28.0),
+                        // Z used to be pure draw order: 2 in front of coins at 1, in
+                        // front of blocks at 0. Now that every block is extruded it is
+                        // a real distance, and the layers are spaced far enough apart
+                        // that they never intersect. See `render::LAYER_PLAYER`.
+                        Transform::from_xyz(center.x, center.y, LAYER_PLAYER),
                         // Matches the sprite exactly, and both are comfortably smaller
                         // than a 32-unit tile so the player fits through a one-tile gap
                         // without catching on the corners.
@@ -283,15 +283,17 @@ pub fn spawn_level(
                     // the `Goal` marker, and the flag is a child so it inherits the
                     // pole's `Transform`. Move the pole and the flag comes along.
                     commands.spawn((
-                        Sprite::from_color(COLOR_GOAL_POLE, Vec2::new(4.0, TILE * 1.8)),
-                        Transform::from_xyz(center.x, center.y, 1.0),
+                        Block::new(BlockKind::GoalPole, 4.0, TILE * 1.8),
+                        Transform::from_xyz(center.x, center.y, LAYER_PROP),
                         Collider::new(TILE * 0.8, TILE * 1.8),
                         Goal,
                         LevelEntity,
                         // `children!` is Bevy's macro for spawning a child inline. The
                         // child's `Transform` is relative to its parent's.
                         children![(
-                            Sprite::from_color(COLOR_GOAL_FLAG, Vec2::new(TILE * 0.7, TILE * 0.5)),
+                            Block::new(BlockKind::GoalFlag, TILE * 0.7, TILE * 0.5),
+                            // Relative to the pole, so this Z is an *offset*, not a
+                            // layer — the flag rides at whatever depth the pole is at.
                             Transform::from_xyz(TILE * 0.35 + 2.0, TILE * 0.6, 0.0),
                         )],
                     ));
@@ -313,8 +315,8 @@ pub fn spawn_level(
         let size = Vec2::new(TILE * spec.width_tiles, TILE * 0.5);
 
         commands.spawn((
-            Sprite::from_color(COLOR_MOVING, size),
-            Transform::from_xyz(start.x, start.y, 0.0),
+            Block::new(BlockKind::Moving, size.x, size.y),
+            Transform::from_xyz(start.x, start.y, LAYER_TERRAIN),
             Collider::new(size.x, size.y),
             Solid,
             MovingPlatform::new(start, end, spec.speed),
@@ -331,7 +333,7 @@ pub fn spawn_level(
 /// Convert a (column, row) in [`LEVEL`] to the world position of that tile's center.
 ///
 /// The `LEVEL.len() - 1 - row` is the top-to-bottom flip; the `+ TILE * 0.5` is because
-/// a Bevy `Sprite` is centered on its `Transform`, not anchored at a corner.
+/// a block mesh is centered on its `Transform`, not anchored at a corner.
 pub fn tile_center(column: f32, row: f32) -> Vec2 {
     Vec2::new(
         column * TILE + TILE * 0.5,

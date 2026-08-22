@@ -23,7 +23,7 @@ use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 
 use crate::{
-    GameState, TILE, camera, gameplay,
+    GameState, TILE, VIEW_HEIGHT, camera, gameplay,
     gameplay::Progress,
     level::{self, LEVEL, PlayerSpawn, SpawnLevel, tile_center},
     physics::{self, GroundState, Velocity},
@@ -720,6 +720,22 @@ fn restarting_resets_progress_and_rebuilds_the_level() {
     assert_eq!(coins as u32, total_coins);
 }
 
+/// The long-lens camera has to frame exactly as much of the world as the orthographic
+/// one it replaced, or every jump in the game is a different size on screen than it was.
+///
+/// `camera_distance` derives itself from `CAMERA_FOV` precisely so that stays true for
+/// any field of view, and this pins that down: retune the lens all you like, but you
+/// can't quietly rescale the game while doing it.
+#[test]
+fn the_camera_frames_exactly_one_view_height() {
+    let visible_height = (camera::CAMERA_FOV * 0.5).tan() * camera::camera_distance() * 2.0;
+
+    assert!(
+        (visible_height - VIEW_HEIGHT).abs() < 0.01,
+        "camera frames {visible_height} world units, expected {VIEW_HEIGHT}"
+    );
+}
+
 #[test]
 fn camera_stays_inside_the_level() {
     let mut app = App::new();
@@ -732,14 +748,17 @@ fn camera_stays_inside_the_level() {
     let bounds = Rect::new(0.0, 0.0, 60.0 * TILE, 18.0 * TILE);
     app.insert_resource(level::LevelBounds(bounds));
     app.world_mut().spawn((
-        Camera2d,
-        Projection::Orthographic(OrthographicProjection {
-            // `area` is normally maintained by the render pipeline, which isn't running
-            // here, so set it directly to a plausible 16:9 view.
-            area: Rect::new(-398.0, -224.0, 398.0, 224.0),
-            ..OrthographicProjection::default_2d()
+        Camera3d::default(),
+        Projection::Perspective(PerspectiveProjection {
+            fov: camera::CAMERA_FOV,
+            // `aspect_ratio` is normally maintained by the render pipeline, which isn't
+            // running here, so set it directly to a plausible 16:9 view. Together with
+            // the distance below that works out to 796x448 world units visible at the
+            // level plane — the same rectangle the orthographic camera used to see.
+            aspect_ratio: 398.0 / 224.0,
+            ..default()
         }),
-        Transform::default(),
+        Transform::from_xyz(0.0, 0.0, camera::camera_distance()),
     ));
     let player = app
         .world_mut()
@@ -755,7 +774,7 @@ fn camera_stays_inside_the_level() {
 
     let camera_position = app
         .world_mut()
-        .run_system_once(|camera: Query<&Transform, With<Camera2d>>| {
+        .run_system_once(|camera: Query<&Transform, With<Camera3d>>| {
             camera
                 .single()
                 .expect("camera exists")
@@ -785,7 +804,7 @@ fn camera_stays_inside_the_level() {
 
     let camera_position = app
         .world_mut()
-        .run_system_once(|camera: Query<&Transform, With<Camera2d>>| {
+        .run_system_once(|camera: Query<&Transform, With<Camera3d>>| {
             camera
                 .single()
                 .expect("camera exists")

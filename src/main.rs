@@ -1,8 +1,13 @@
 //! # A tiny 2D platformer, built to be read
 //!
 //! This is a complete (if small) platformer written against **Bevy 0.19** with no
-//! external crates and no art assets — every sprite is a colored rectangle, and the
-//! level is a block of ASCII art in [`level::LEVEL`].
+//! external crates and no art assets — every block is a flat-colored box, and the level
+//! is a block of ASCII art in [`level::LEVEL`].
+//!
+//! The gameplay is entirely two-dimensional: [`physics`] resolves 2D AABBs, and
+//! [`level::LEVEL`] is a flat grid. It is *drawn*, however, with 3D meshes seen through
+//! a long-lens perspective camera — see [`camera::CAMERA_FOV`] for why that looks
+//! exactly like a 2D game, and [`render`] for how a 2D level grows a third dimension.
 //!
 //! ## The Bevy ideas this project demonstrates
 //!
@@ -25,6 +30,7 @@
 //! | File | What it owns |
 //! |---|---|
 //! | [`level`] | The ASCII level, and turning each character into entities |
+//! | [`render`] | The palette, and giving each entity a body to draw |
 //! | [`physics`] | Gravity, AABB collision resolution, moving platforms |
 //! | [`player`] | Reading the keyboard and turning it into velocity (the "game feel") |
 //! | [`gameplay`] | Coins, spikes, the goal flag, the score |
@@ -50,6 +56,7 @@ mod gameplay;
 mod level;
 mod physics;
 mod player;
+mod render;
 mod ui;
 
 /// Headless tests for the game logic — `cargo test`. Worth a read: they double as a
@@ -111,11 +118,19 @@ fn main() {
         .init_resource::<gameplay::Progress>()
         .init_resource::<level::PlayerSpawn>()
         .init_resource::<level::LevelBounds>()
+        // Shared mesh and material handles, so a thousand tiles don't allocate a
+        // thousand copies of the same cube. Deliberately absent from `tests.rs`.
+        .init_resource::<render::BlockAssets>()
         // An *observer* is a system that runs in response to a triggered event rather
         // than on a schedule. `SpawnLevel` is triggered from two very different places
         // (startup, and the restart key), and an observer lets both share one code
         // path without either needing to know about the other.
         .add_observer(level::spawn_level)
+        // The other observer, and the only reason this app renders anything: it watches
+        // for a `Block` component appearing and hangs a mesh on whatever it landed on.
+        // Registering it here rather than inside `spawn_level` is what lets the headless
+        // tests build the real level without an asset system — see `render`.
+        .add_observer(render::add_block_visual)
         // `Startup` runs once, before the first `Update`.
         .add_systems(
             Startup,
